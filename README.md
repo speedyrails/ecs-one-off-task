@@ -47,7 +47,7 @@ The `ecsTaskExecutionRole` IAM role must allow access to read from S3 buckets, t
 Download the script and apply the execution permissions:
 
 ```bash
-curl -L https://github.com/speedyrails/ecs-one-off-task/raw/master/ecs-one-off-task.sh -o ecs-one-off-task.sh
+curl -L https://raw.githubusercontent.com/speedyrails/ecs-one-off-task/master/ecs-one-off-task.sh -o ecs-one-off-task.sh
 chmod +x ecs-one-off-task.sh
 ```
 
