@@ -7,6 +7,41 @@ Creates a one-off ECS task.
 - The `aws` command line must be installed on the system. See [Installing, updating, and uninstalling the AWS CLI version 2](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html) in the AWS documentation for further details.
 - The command line tool [jq](https://stedolan.github.io/jq/). For Debian/Ubuntu distros: `apt install jq`.
 
+The following AWS IAM permission are required to execute the script commands:
+
+- `ecs:RunTask`
+- `ecs:RegisterTaskDefinition`
+- `ecs:DescribeTasks`
+- `iam:PassRole`
+
+IAM Policy example:
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "AllowRunRegisterDescribeTasks",
+            "Effect": "Allow",
+            "Action": [
+                "ecs:RunTask",
+                "ecs:RegisterTaskDefinition",
+                "ecs:DescribeTasks"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Sid": "AllowPassRole",
+            "Effect": "Allow",
+            "Action": "iam:PassRole",
+            "Resource": "arn:aws:iam::<ACCOUNT_ID>:role/ecsTaskExecutionRole"
+        }
+    ]
+}
+```
+
+The `ecsTaskExecutionRole` IAM role must allow access to read from S3 buckets, this is required to load the container environment variables in the task definition. For this, the AWS managed policy `AmazonS3ReadOnlyAccess` can be added to the `ecsTaskExecutionRole` IAM role.
+
 ## Usage
 
 Download the script and apply the execution permissions:
@@ -33,6 +68,8 @@ To execute the task for database migrations:
 ```
 
 ## Examples
+
+To run a database migration:
 
 ```bash
 ./ecs-one-off-task.sh "db-migrations" "arn:aws:iam::<ACCOUNT_ID>:role/ecsTaskExecutionRole" "myEcsCluster" "myapp:latest" "arn:aws:s3:::bucket/myapp-vars.env" "sh -c" "bundle exec rake db:migrate"
