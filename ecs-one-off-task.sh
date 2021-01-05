@@ -11,7 +11,7 @@
 # By Carlos Miguel Bustillo Rdguez <https://linkedin.com/in/carlosbustillordguez/>
 # Speedyrails Inc. <https://www.speedyrails.com/>
 #
-# Version: 1.0.0 (Tue 05 Jan 2021 03:08:27 PM GMT)
+# Version: 1.0.1 (Tue 05 Jan 2021 11:09:52 PM GMT)
 
 
 ### Functions
@@ -41,7 +41,7 @@ create_task_definition_file() {
     ENTRYPOINT="$5"
     COMMAND="$6"
 
-    # Convert ENTRYPOINT in a comma separated list
+    # Convert ENTRYPOINT in a comma-separated list
     LIST=""
     for i in $ENTRYPOINT; do
         LIST="${LIST:+$LIST }\"$i\""
@@ -49,13 +49,18 @@ create_task_definition_file() {
     # Bash pattern substitution: ${parameter//pattern/string}
     ENTRYPOINT_LIST=${LIST// /, }
 
-    # Convert COMMAND in a comma separated list
-    LIST=""
-    for i in $COMMAND; do
-        LIST="${LIST:+$LIST }\"$i\""
-    done
-    # Bash pattern substitution: ${parameter//pattern/string}
-    COMMAND_LIST=${LIST// /, }
+    # Check if not needed to convert COMMAND in a comma-separated list
+    if [[ "$ENTRYPOINT" != *"sh -c"* ]]; then
+        # Convert COMMAND in a comma-separated list
+        LIST=""
+        for i in $COMMAND; do
+            LIST="${LIST:+$LIST }\"$i\""
+        done
+        # Bash pattern substitution: ${parameter//pattern/string}
+        COMMAND=${LIST// /, }
+    else
+        COMMAND="\"$COMMAND\""
+    fi
 
 cat <<EOF > one-off-task-definition.json
 {
@@ -70,7 +75,7 @@ cat <<EOF > one-off-task-definition.json
         ],
         "entryPoint": [ $ENTRYPOINT_LIST ],
         "portMappings": [],
-        "command": [ $COMMAND_LIST ],
+        "command": [ $COMMAND ],
         "cpu": 128,
         "memory": 400,
         "memoryReservation": 300,
@@ -129,6 +134,12 @@ RUN_TASK_OUTPUT=$(aws ecs run-task --cluster "$ECS_CLUSTER_NAME" --task-definiti
 # Get the task ARN
 RUN_TASK_ARN=$(echo "$RUN_TASK_OUTPUT" | jq -r '.tasks[0].taskArn')
 
+if [ "$RUN_TASK_ARN" == "null" ]; then
+    echo -e "\nError running the task '$TASK_DEFINITION_REVISION':\n"
+    echo "$RUN_TASK_OUTPUT"
+    exit 1
+fi
+
 echo "Executed task ARN: $RUN_TASK_ARN"
 
 # Wait until the task is stopped
@@ -137,7 +148,7 @@ aws ecs wait tasks-stopped --cluster "$ECS_CLUSTER_NAME" --tasks "$RUN_TASK_ARN"
 # Get the output of the stopped task
 STOPPED_TASK_OUTPUT=$(aws ecs describe-tasks --cluster "$ECS_CLUSTER_NAME" --tasks "$RUN_TASK_ARN")
 
-echo -e "The migration process has finised: \n"
+echo -e "The one-off task has finished: \n"
 echo "$STOPPED_TASK_OUTPUT"
 
 # Get the container exit status code
