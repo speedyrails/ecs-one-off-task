@@ -1,0 +1,5 @@
+[flake8]
+# Ignores:
+# E501 line too long
+# E128 continuation line under-indented for visual indent
+ignore = E501, E128
