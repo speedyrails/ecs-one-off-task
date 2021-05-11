@@ -1,6 +1,6 @@
 # ECS one-off task
 
-Creates a one-off ECS task.
+Creates and run a one-off ECS task. Also, wait for the task to finishes and describe the executed task.
 
 ## Requirements
 
