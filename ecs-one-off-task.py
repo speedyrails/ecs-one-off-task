@@ -90,7 +90,7 @@ def createCloudWatchLogGroup(logGroupName, retentionDays=7):
     return f"Using the '{logGroupName}' CloudWatch Log Group to store the containers logs"
 
 
-def printContainerOutput(logGroupName):
+def printContainerOutput(logGroupName, taskArn):
     """ Get the logs of the latest log stream in an CloudWatch Log Group.
 
         Args:
@@ -98,22 +98,23 @@ def printContainerOutput(logGroupName):
 
     """
 
-    # Get the latest log stream in the log group logGroupName
-    response = logs.describe_log_streams(
-        logGroupName=logGroupName,
-        orderBy='LastEventTime',
-        descending=True,
-        limit=1
-    )
+    # Get the task ID from the taskArn to build the logStreamName
+    taskId = taskArn.split('/')[2]
 
-    logStreamName = response['logStreams'][0]['logStreamName']
+    # Log stream name of the current task
+    logStreamName = logGroupName.lstrip('/') + "/" + taskId
 
-    # Get the log on logGroupName/logStreamName
-    response = logs.get_log_events(
-        logGroupName=logGroupName,
-        logStreamName=logStreamName,
-        startFromHead=False
-    )
+    # Get the logs from logStreamName
+    try:
+        response = logs.get_log_events(
+            logGroupName=logGroupName,
+            logStreamName=logStreamName,
+            startFromHead=False
+        )
+
+    except logs.exceptions.ResourceNotFoundException:
+        print("Container output: None")
+        return
 
     logStreamEvents = response['events']
 
@@ -126,8 +127,8 @@ def printContainerOutput(logGroupName):
         print("Container output: None")
 
 
-def createTaskDefinition(options):
-    """ Creates a new task definition from an already existing task definition.
+def createRunTaskDefinition(options):
+    """ Creates and runs new task definition from an already existing task definition.
 
         Args:
             args: the script options.
@@ -271,14 +272,14 @@ def createTaskDefinition(options):
 
     if oneOffTaskExitCode == 0 and not oneOffTaskExitCode:
         print("\n==> The one-off task process has finished correctly!!")
-        printContainerOutput(logGroupName=oneOffTaskContainerLogGroup)
+        printContainerOutput(logGroupName=oneOffTaskContainerLogGroup, taskArn=oneOffTaskRunArn)
         sys.exit()
     else:
         print("\n==> The one-off task has failed!!")
         print(f"Container exit code: {oneOffTaskExitCode}")
         print(f"Container exit reason: {oneOffTaskExitCodeReason}")
         print(f"Stopped reason: {oneOffTaskStopeedReason}")
-        printContainerOutput(logGroupName=oneOffTaskContainerLogGroup)
+        printContainerOutput(logGroupName=oneOffTaskContainerLogGroup, taskArn=oneOffTaskRunArn)
         sys.exit(1)
 
 
@@ -337,7 +338,7 @@ def main():
     initializeAwsClients(options)
 
     # Select the script actions
-    createTaskDefinition(options)
+    createRunTaskDefinition(options)
 
 
 if __name__ == "__main__":
