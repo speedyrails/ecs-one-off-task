@@ -10,7 +10,7 @@ The idea of this script is to create a new task definition/revisions from an alr
 
 In order to keep the same requirements for the new task some elements need to be extracted from the reference task such as secrets (environment variables referenced from SSM Parameters), environment files (.env file in S3), environment variables defined inline in the task, and the execution role ARN.
 
-The new task definition is created with the following manifest:
+The new task definition is created with the following manifest for EC2 instances:
 
 ```python
 {
@@ -40,6 +40,45 @@ The new task definition is created with the following manifest:
         }
     ],
     "family": oneOffTaskName
+}
+```
+
+For Fargate is used the following manifest:
+
+```python
+{
+    "executionRoleArn": execRoleArn,
+    "containerDefinitions": [
+        {
+            "environmentFiles": [],
+            "secrets": [],
+            "environment": [],
+            "entryPoint": [],
+            "portMappings": [],
+            "command": containerCommand,
+            "cpu": 128,
+            "memory": 400,
+            "memoryReservation": 300,
+            "volumesFrom": [],
+            "image": containerImage,
+            "name": oneOffTaskName,
+            "logConfiguration": {
+                "logDriver": "awslogs",
+                "options": {
+                    "awslogs-group": oneOffTaskContainerLogGroup,
+                    "awslogs-region": awsRegion,
+                    "awslogs-stream-prefix": oneOffTaskContainerLogStreamPrefix
+                }
+            }
+        }
+    ],
+    "family": oneOffTaskName,
+    "networkMode": "awsvpc",
+    "requiresCompatibilities": [
+        "FARGATE"
+    ],
+    "cpu": "256",
+    "memory": "512"
 }
 ```
 
@@ -161,11 +200,20 @@ python ecs-one-off-task.py --task-name myapp-db-migrations --from-task myapp --c
     --image myapp:v2 --command bundle exec rake db:migrate
 ```
 
+To run the task on Fargate, add the `--launch-type`, `--networks-id` and `--security-groups-id` flags, e.g.:
+
+```bash
+python ecs-one-off-task.py --task-name myapp-db-migrations --from-task myapp --cluster myEcsCluster \
+    --image myapp:v2 --command bundle exec rake db:migrate \
+    --launch-type FARGATE --networks-id <subnet-id1 subnet-id2 ...> --security-groups-id <sg-id1 sg-id2 ...>
+```
+
 **NOTES:**
 
 - You can specify an AWS profile name and region using the `-p/--profile` and `-r/--region` flags respectively.
 - Every time you define a new image version, a new revision will be created for the task definition `myapp-db-migrations`.
 - If you need to use `&&`, `||`, `|`, `<`, `>` or the command has arguments with flags, you must specify the command between `''` or `""` and define one of the following entry points `'sh -c'` or `'bash -c'`; please noted that *the entry point always must be defined using `''` or `""`*.
+- When is set `--launch-type FARGATE` , all specified subnets and security groups must be from the same VPC.
 
 ## License
 

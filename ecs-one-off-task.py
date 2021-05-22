@@ -142,9 +142,17 @@ def createRunTaskDefinition(options):
     containerEntrypoint = options.entrypoint
     containerImage = options.image
     oneOffTaskName = options.task_name
+    oneOffTaskLaunchType = options.launch_type
+    oneOffTaskNetsId = options.networks_id
+    oneOffTaskSgsId = options.security_groups_id
     # Container log group name and log stream prefix for CloudWatch
     oneOffTaskContainerLogGroup = f"/ecs/{oneOffTaskName}"
     oneOffTaskContainerLogStreamPrefix = "ecs"
+
+    # Check if the network configuration is provided when the launch type is FARGATE
+    if oneOffTaskLaunchType == "FARGATE" and (not oneOffTaskNetsId or not oneOffTaskSgsId):
+        print("Error: for launch type 'FARGATE' the network configuration must be provided using the `--networks-id` and `--security-groups-id` flags.")
+        sys.exit(1)
 
     # Get the latest active task definition from refTaskDefName
     latestActiveTaskDef = ecs.describe_task_definition(
@@ -180,36 +188,74 @@ def createRunTaskDefinition(options):
     # Get the execution role ARN for the task
     execRoleArn = latestActiveTaskDef['taskDefinition'].get('executionRoleArn', None)
 
-    # Build the one-off task definition
-    oneOffTaskDef = {
-        "executionRoleArn": execRoleArn,
-        "containerDefinitions": [
-            {
-                "environmentFiles": [],
-                "secrets": [],
-                "environment": [],
-                "entryPoint": [],
-                "portMappings": [],
-                "command": containerCommand,
-                "cpu": 128,
-                "memory": 400,
-                "memoryReservation": 300,
-                "volumesFrom": [],
-                "image": containerImage,
-                "name": oneOffTaskName,
-                "logConfiguration": {
-                    "logDriver": "awslogs",
-                    "options": {
-                        "awslogs-group": oneOffTaskContainerLogGroup,
-                        "awslogs-region": awsRegion,
-                        "awslogs-stream-prefix": oneOffTaskContainerLogStreamPrefix
+    if oneOffTaskLaunchType == "EC2":
+        # Build the one-off task definition for EC2
+        oneOffTaskDef = {
+            "executionRoleArn": execRoleArn,
+            "containerDefinitions": [
+                {
+                    "environmentFiles": [],
+                    "secrets": [],
+                    "environment": [],
+                    "entryPoint": [],
+                    "portMappings": [],
+                    "command": containerCommand,
+                    "cpu": 128,
+                    "memory": 400,
+                    "memoryReservation": 300,
+                    "volumesFrom": [],
+                    "image": containerImage,
+                    "name": oneOffTaskName,
+                    "logConfiguration": {
+                        "logDriver": "awslogs",
+                        "options": {
+                            "awslogs-group": oneOffTaskContainerLogGroup,
+                            "awslogs-region": awsRegion,
+                            "awslogs-stream-prefix": oneOffTaskContainerLogStreamPrefix
+                        }
                     }
                 }
-            }
-        ],
-        "family": oneOffTaskName
-    }
+            ],
+            "family": oneOffTaskName
+        }
+    else:
+        # Build the one-off task definition for Fargate
+        oneOffTaskDef = {
+            "executionRoleArn": execRoleArn,
+            "containerDefinitions": [
+                {
+                    "environmentFiles": [],
+                    "secrets": [],
+                    "environment": [],
+                    "entryPoint": [],
+                    "portMappings": [],
+                    "command": containerCommand,
+                    "cpu": 128,
+                    "memory": 400,
+                    "memoryReservation": 300,
+                    "volumesFrom": [],
+                    "image": containerImage,
+                    "name": oneOffTaskName,
+                    "logConfiguration": {
+                        "logDriver": "awslogs",
+                        "options": {
+                            "awslogs-group": oneOffTaskContainerLogGroup,
+                            "awslogs-region": awsRegion,
+                            "awslogs-stream-prefix": oneOffTaskContainerLogStreamPrefix
+                        }
+                    }
+                }
+            ],
+            "family": oneOffTaskName,
+            "networkMode": "awsvpc",
+            "requiresCompatibilities": [
+                "FARGATE"
+            ],
+            "cpu": "256",
+            "memory": "512"
+        }
 
+    # Update task definition with optionals keys
     if containerEntrypoint:
         oneOffTaskDef['containerDefinitions'][0].update({"entryPoint": containerEntrypoint.split(' ')})
 
@@ -234,10 +280,24 @@ def createRunTaskDefinition(options):
     print("\n" + createCloudWatchLogGroup(logGroupName=oneOffTaskContainerLogGroup))
 
     # Run the one-off task with the created task definition (oneOffTaskDefArn)
-    response = ecs.run_task(
-        cluster=ecsCluster,
-        taskDefinition=oneOffTaskDefArn
-    )
+    if oneOffTaskLaunchType == "EC2":
+        response = ecs.run_task(
+            cluster=ecsCluster,
+            taskDefinition=oneOffTaskDefArn
+        )
+    else:
+        response = ecs.run_task(
+            cluster=ecsCluster,
+            taskDefinition=oneOffTaskDefArn,
+            launchType='FARGATE',
+            networkConfiguration={
+                'awsvpcConfiguration': {
+                    'subnets': oneOffTaskNetsId,
+                    'securityGroups': oneOffTaskSgsId,
+                    'assignPublicIp': 'DISABLED'
+                }
+            }
+        )
 
     # Get the one-off run task ARN
     oneOffTaskRunArn = response['tasks'][0]['taskArn']
@@ -297,9 +357,14 @@ def getOptions(args=sys.argv[1:]):
         epilog=textwrap.dedent(f'''\
             Usage samples:
             --------------
-                Run a one-off task:
+                Run a one-off task on EC2 instances:
                     {sys.argv[0]} --task-name <TASK_NAME> --from-task <REFERENCE_TASK_NAME> --cluster <ECS_CLUSTER_NAME> \\
                         --image <OCI_IMAGE> --entrypoint <ENTRYPOINT> --command <COMMAND>
+
+                Run a one-off task on Fargate:
+                    {sys.argv[0]} --task-name <TASK_NAME> --from-task <REFERENCE_TASK_NAME> --cluster <ECS_CLUSTER_NAME> \\
+                        --image <OCI_IMAGE> --entrypoint <ENTRYPOINT> --command <COMMAND> \\
+                        --launch-type FARGATE --networks-id  <NET_ID1 NET_ID2 ...> --security-groups-id <SG_ID1 SG_ID2...>
             ''')
     )
 
@@ -312,6 +377,17 @@ def getOptions(args=sys.argv[1:]):
     parser.add_argument("--image", required=True, help="the image URI for the one-off task")
     parser.add_argument("--entrypoint", help="the entrypoint for the one-off task, e.g.: 'sh -c'")
     parser.add_argument("--command", required=True, nargs='+', help="the command for the one-off task")
+    parser.add_argument("--launch-type", default='EC2', choices=["EC2", "FARGATE"], help="the launch type on which to run the one-off task")
+    parser.add_argument(
+        "--networks-id",
+        nargs='*',
+        help="the IDs of the subnets associated with the one-off task. All specified subnets must be from the same VPC"
+    )
+    parser.add_argument(
+        "--security-groups-id",
+        nargs='*',
+        help="the IDs of the security groups associated with the one-off task. All specified security groups must be from the same VPC."
+    )
 
     # Print usage and exit if not arguments are supplied
     if not args:
