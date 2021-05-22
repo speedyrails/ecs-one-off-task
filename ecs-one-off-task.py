@@ -368,15 +368,20 @@ def getOptions(args=sys.argv[1:]):
             ''')
     )
 
-    # Global options
+    # Group for required arguments
+    group = parser.add_argument_group('required arguments')
+
+    # Required arguments
+    group.add_argument("--task-name", required=True, help="the name for one-off task")
+    group.add_argument("--from-task", required=True, help="the name of the reference task to create the one-off task")
+    group.add_argument("--cluster", required=True, help="the ECS cluster name to connect")
+    group.add_argument("--image", required=True, help="the image URI for the one-off task")
+    group.add_argument("--command", required=True, nargs='+', help="the command for the one-off task")
+
+    # Optional arguments
     parser.add_argument("-p", "--profile", help="a valid AWS profile name to perform the tasks")
     parser.add_argument("-r", "--region", help="a valid AWS region to perform the tasks")
-    parser.add_argument("--task-name", required=True, help="the name for one-off task")
-    parser.add_argument("--from-task", required=True, help="the name of the reference task to create the one-off task")
-    parser.add_argument("--cluster", required=True, help="the ECS cluster name to connect")
-    parser.add_argument("--image", required=True, help="the image URI for the one-off task")
     parser.add_argument("--entrypoint", help="the entrypoint for the one-off task, e.g.: 'sh -c'")
-    parser.add_argument("--command", required=True, nargs='+', help="the command for the one-off task")
     parser.add_argument("--launch-type", default='EC2', choices=["EC2", "FARGATE"], help="the launch type on which to run the one-off task")
     parser.add_argument(
         "--networks-id",
