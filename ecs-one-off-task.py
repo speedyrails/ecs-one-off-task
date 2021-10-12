@@ -265,7 +265,7 @@ def createRunTaskDefinition(options):
     if containerSecrets:
         oneOffTaskDef['containerDefinitions'][0].update({"secrets": containerSecrets})
 
-    if containerEnvFiles:
+    if containerEnv:
         oneOffTaskDef['containerDefinitions'][0].update({"environment": containerEnv})
 
     # Create a new task revision for the one-off task
